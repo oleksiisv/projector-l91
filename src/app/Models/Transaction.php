@@ -9,40 +9,18 @@ use Illuminate\Support\Facades\Redis;
 
 class Transaction extends Model
 {
+    const LOG_DATA =0;
     use HasFactory;
 
-    /**
-     * @param $transaction
-     *
-     * @return void
-     */
-    public function saveToCache($transaction)
-    {
-        $redis = Redis::connection('cache');
-        Redis::connection('cache')->set($transaction->psp_reference, json_encode($transaction), 'EX', 60);
-        echo 'Saved to cache' . $transaction->psp_reference . '<br>';
-
-        return $transaction;
-    }
+    private $redis;
 
     /**
-     * @param $key
-     *
-     * @return mixed
+     * @param $redis
      */
-    public function getFromCache($key)
+    public function __construct()
     {
-        $redis = Redis::connection('cache');
-        echo 'Loaded from cache:' . $key. '(ttl:' . $redis->ttl($key) . ')' . '<br>';
-        return json_decode($redis->get($key));
-    }
-
-    /**
-     * @return \Illuminate\Support\Collection
-     */
-    public function getTransactions()
-    {
-        return DB::table('transactions')->get('psp_reference');
+        parent::__construct();
+        $this->redis = Redis::connection('cache');
     }
 
     /**
@@ -56,10 +34,86 @@ class Transaction extends Model
         if ($result == null) {
             $record = DB::select('select * from transactions where psp_reference = ?', [$key]);
             $result = $record[0];
-            echo 'Loaded from database:' . $key . '<br>';
+            $this->log('Loaded from database:' . $key);
             $this->saveToCache($result);
         }
 
         return $result;
+    }
+
+    /**
+     * @param $transaction
+     *
+     * @return void
+     */
+    private function saveToCache($transaction)
+    {
+        $this->redis->set($transaction->psp_reference, json_encode($transaction), 'EX', 60);
+        $this->log('Saved to cache' . $transaction->psp_reference);
+
+        return $transaction;
+    }
+
+    /**
+     * @param $key
+     *
+     * @return mixed
+     */
+    private function getFromCache($key)
+    {
+        $this->log('Loaded from cache:' . $key . '(ttl:' . $this->redis->ttl($key) . ')');
+
+        return json_decode($this->redis->get($key));
+    }
+
+    /**
+     * @return array
+     */
+    public function getTransactions()
+    {
+        $transactions = $this->getTransactionsKeys();
+        if ($transactions == null) {
+            $this->cacheTransactionsKeys();
+            $transactions = $this->getTransactions();
+        }
+        $this->log('Transactions loaded from cache');
+        $result = [];
+        foreach ($transactions as $key) {
+            $result[] = $this->getTransaction($key);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return mixed
+     */
+    private function getTransactionsKeys()
+    {
+        return json_decode($this->redis->get('transactions_keys'));
+    }
+
+    /**
+     * @return void
+     */
+    private function cacheTransactionsKeys()
+    {
+        $transactionKeys = Transaction::pluck('psp_reference')->toArray();
+        //EX is not defined to set it to -1 by default
+        $this->redis->set('transactions_keys', json_encode($transactionKeys));
+        $this->log('Transactions saved to cache');
+    }
+
+    /**
+     * @param $message
+     *
+     * @return void
+     */
+    private function log($message)
+    {
+        if (self::LOG_DATA !== 1) {
+            return;
+        }
+        echo $message . '<br>';
     }
 }

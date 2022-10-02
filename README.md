@@ -13,7 +13,8 @@ Please note: not all redis sentinels will launch after docker-compose due to the
 
 you may need to start containers manually. 
 
-Docker exec to the laravel application container, run:
+Docker exec to the laravel application container, run:\
+* ```composer install```
 * ```php artisan migrate``` to create database tables
 * ```php artisan db:seed --class=TransactionSeeder ```
 

@@ -10,7 +10,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Transaction;
 use Database\Factories\TransactionFactory;
-use Illuminate\Support\Facades\Redis;
 
 class TransactionController extends Controller
 {
@@ -22,7 +21,6 @@ class TransactionController extends Controller
     public function __construct(
         Transaction $transaction
     ) {
-
         $this->transaction = $transaction;
     }
 
@@ -34,8 +32,7 @@ class TransactionController extends Controller
         $result = $this->transaction->getTransactions();
 
         return view('transaction.list', [
-            'count' => count(json_decode($result)),
-            'transactions' => json_decode($result)
+            'transactions' => $result
         ]);
     }
 
