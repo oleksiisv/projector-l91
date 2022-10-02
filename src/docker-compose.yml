@@ -49,15 +49,17 @@ services:
 
     redis:
         image: 'bitnami/redis:latest'
+        hostname: 'redis'
         environment:
             - REDIS_REPLICATION_MODE=master
             - REDIS_PASSWORD=${REDIS_PASSWORD}
         networks:
             - sail
         ports:
-            - '${FORWARD_REDIS_PORT:-6379}:6379'
+            - '${REDIS_PORT}:6379'
         volumes:
             - 'sail-redis:/data'
+            - './redis/conf:/opt/bitnami/redis/etc/'
         healthcheck:
             test: [ "CMD", "redis-cli", "ping" ]
             retries: 3
@@ -76,11 +78,11 @@ services:
             - redis
         networks:
             - sail
+        volumes:
+            - 'sail-redis:/data'
 
     redis-sentinel:
         image: 'bitnami/redis-sentinel:latest'
-        environment:
-            - REDIS_MASTER_PASSWORD=${REDIS_PASSWORD}
         depends_on:
             - redis
             - redis-slave
@@ -88,6 +90,11 @@ services:
             - '26379-26381:26379'
         networks:
             - sail
+        volumes:
+            - 'sail-redis:/data'
+            - './redis:/bitnami'
+        links:
+            - redis
 
 networks:
     sail:
@@ -96,6 +103,4 @@ volumes:
     sail-mysql:
         driver: local
     sail-redis:
-        driver: local
-    sail-meilisearch:
         driver: local

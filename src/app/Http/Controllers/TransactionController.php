@@ -10,19 +10,47 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Transaction;
 use Database\Factories\TransactionFactory;
+use Illuminate\Support\Facades\Redis;
 
 class TransactionController extends Controller
 {
+    private Transaction $transaction;
+
+    /**
+     * @param Transaction $transaction
+     */
+    public function __construct(
+        Transaction $transaction
+    ) {
+
+        $this->transaction = $transaction;
+    }
+
     /**
      * @return Application|Factory|View
      */
     public function list()
     {
-        $transactions = DB::table('transactions')->get();
+        $result = $this->transaction->getTransactions();
 
         return view('transaction.list', [
-            'count' => $transactions->count(),
-            'transactions' => $transactions,
+            'count' => count(json_decode($result)),
+            'transactions' => json_decode($result)
+        ]);
+    }
+
+    /**
+     * @param Request $request
+     *
+     * @return Application|Factory|View
+     */
+    public function view(Request $request)
+    {
+        $key = $request->input('key');
+        $result = $this->transaction->getTransaction($key);
+        return view('transaction.view', [
+            'key' => $key,
+            'transaction' => $result
         ]);
     }
 
@@ -44,12 +72,11 @@ class TransactionController extends Controller
     public function sample(): string
     {
         $factory = new TransactionFactory();
-        for ($i = 0; $i < 20; $i++){
+        for ($i = 0; $i < 20; $i++) {
             $params = $factory->definition();
             $url = "http://localhost/transaction/create?" . http_build_query($params) . "\r\n";
             file_put_contents('siege_urls.txt', $url, FILE_APPEND);
         }
-
 
         return 'sample requests written to siege_urls.txt';
     }
