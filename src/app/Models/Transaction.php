@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\TransactionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -9,7 +10,7 @@ use Illuminate\Support\Facades\Redis;
 
 class Transaction extends Model
 {
-    const LOG_DATA =0;
+    const LOG_DATA = 0;
     use HasFactory;
 
     private $redis;
@@ -48,7 +49,7 @@ class Transaction extends Model
      */
     private function saveToCache($transaction)
     {
-        $this->redis->set($transaction->psp_reference, json_encode($transaction), 'EX', 60);
+        $this->redis->set($transaction->psp_reference, json_encode($transaction), 'EX', 600);
         $this->log('Saved to cache' . $transaction->psp_reference);
 
         return $transaction;
@@ -61,9 +62,12 @@ class Transaction extends Model
      */
     private function getFromCache($key)
     {
-        $this->log('Loaded from cache:' . $key . '(ttl:' . $this->redis->ttl($key) . ')');
+        $result = json_decode($this->redis->get($key));
+        if ($result !== null) {
+            $this->log('Loaded from cache:' . $key . '(ttl:' . $this->redis->ttl($key) . ')');
+        }
 
-        return json_decode($this->redis->get($key));
+        return $result;
     }
 
     /**
@@ -71,14 +75,8 @@ class Transaction extends Model
      */
     public function getTransactions()
     {
-        $transactions = $this->getTransactionsKeys();
-        if ($transactions == null) {
-            $this->cacheTransactionsKeys();
-            $transactions = $this->getTransactions();
-        }
-        $this->log('Transactions loaded from cache');
-        $result = [];
-        foreach ($transactions as $key) {
+        $keys = $this->getTransactionsKeys();
+        foreach ($keys as $key) {
             $result[] = $this->getTransaction($key);
         }
 
@@ -90,18 +88,15 @@ class Transaction extends Model
      */
     private function getTransactionsKeys()
     {
-        return json_decode($this->redis->get('transactions_keys'));
-    }
+        $result = json_decode($this->redis->get('transactions_keys'));
+        if ($result == null) {
+            $result = Transaction::pluck('psp_reference')->toArray();
+            //EX is not defined to set it to -1 by default
+            $this->redis->set('transactions_keys', json_encode($result));
+            $this->log('Transactions saved to cache');
+        }
 
-    /**
-     * @return void
-     */
-    private function cacheTransactionsKeys()
-    {
-        $transactionKeys = Transaction::pluck('psp_reference')->toArray();
-        //EX is not defined to set it to -1 by default
-        $this->redis->set('transactions_keys', json_encode($transactionKeys));
-        $this->log('Transactions saved to cache');
+        return $result;
     }
 
     /**
@@ -115,5 +110,17 @@ class Transaction extends Model
             return;
         }
         echo $message . '<br>';
+    }
+
+    /**
+     * @return void
+     */
+    public function siegeUrls()
+    {
+        $transactions = $this->getTransactions();
+        foreach ($transactions as $transaction) {
+            $url = "http://localhost/transaction/view?key=" . $transaction->psp_reference . "\r\n";
+            file_put_contents('siege_urls.txt', $url, FILE_APPEND);
+        }
     }
 }

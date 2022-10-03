@@ -26,6 +26,7 @@ services:
             - mysql
             - redis
 
+    ### MySQL ################################################
     mysql:
         image: 'mysql/mysql-server:8.0'
         ports:
@@ -47,6 +48,7 @@ services:
             retries: 3
             timeout: 5s
 
+    ### Redis ################################################
     redis:
         image: 'bitnami/redis:latest'
         hostname: 'redis'
@@ -65,6 +67,7 @@ services:
             retries: 3
             timeout: 5s
 
+    ### Redis slave ################################################
     redis-slave:
         image: 'bitnami/redis:latest'
         environment:
@@ -81,6 +84,7 @@ services:
         volumes:
             - 'sail-redis:/data'
 
+    ### Redis Sentinel ################################################
     redis-sentinel:
         image: 'bitnami/redis-sentinel:latest'
         depends_on:
@@ -96,6 +100,47 @@ services:
         links:
             - redis
 
+    ### Grafana ################################################
+    grafana:
+        build:
+            context: ./grafana
+        env_file: ./.env
+        volumes:
+            - ./grafana:/var/lib/grafana
+            - ./grafana/provisioning/:/etc/grafana/provisioning/
+            - ./grafana/dashboards/:/var/lib/grafana/dashboards/
+        ports:
+            - "3000:3000"
+        depends_on:
+            - influxdb
+        networks:
+            - sail
+
+    ### Telegraf ################################################
+    telegraf:
+        image: telegraf:1.21
+        volumes:
+            - ./telegraf/etc/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+            - /var/run/docker.sock:/var/run/docker.sock
+        depends_on:
+            - influxdb
+        ports:
+            - '127.0.0.1:8125:8125/udp'
+        networks:
+            - sail
+
+    ### InfluxDb ################################################
+    influxdb:
+        image: influxdb:1.8
+        env_file: ./.env
+        ports:
+            - "8086:8086"
+        volumes:
+            - ./:/imports
+            - influxdb_data:/var/lib/influxdb
+        networks:
+            - sail
+
 networks:
     sail:
         driver: bridge
@@ -104,3 +149,5 @@ volumes:
         driver: local
     sail-redis:
         driver: local
+    grafana_data: { }
+    influxdb_data: { }
