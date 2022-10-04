@@ -18,6 +18,34 @@ Docker exec to the laravel application container, run:\
 * ```php artisan migrate``` to create database tables
 * ```php artisan db:seed --class=TransactionSeeder ```
 
+## Probability cache
+
+Function implemented in ```\App\Models\Transaction::probabilisticExarlyExpire``` (src/app/Models/Transaction.php). There are defined item reload chances: 
+
+40% chance if ttl is between 20% and 30% left \
+70% chance if ttl is between 100% and 20% left \
+90% chance if ttl is lower than 10% of the initial value. 
+
+As a result we have different probability chance to reload item from DB. The smaller the ttl, the higher the chance to reload record: 
+
+key: UA02019732340488001098769755, ttl: 9, chance: 0, cache reset:  \
+key: UA02019732340488001098769755, ttl: 9, chance: 0, cache reset:  \
+key: UA02019732340488001098769755, ttl: 9, chance: 0, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset:  \
+**key: UA02019732340488001098769755, ttl: 8, chance: 40, cache reset: 1**\
+key: UA02019732340488001098769755, ttl: 30, chance: 0, cache reset:  \
+key: UA02019732340488001098769755, ttl: 30, chance: 0, cache reset:  \
+key: UA02019732340488001098769755, ttl: 30, chance: 0, cache reset:
+
+Can be tested using the siege tool running ```siege -r50 -c10 --file=./public/siege_urls_probability.txt``` command from the src dir. Records are written to the ./public/cache.log file. 
+
 ## Eviction policies testing
 
 Defined ```maxmemory 900kb``` in ```src/redis/conf/redis.conf```. Generated urls to view transaction pages.

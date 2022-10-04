@@ -9,7 +9,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Transaction;
-use Database\Factories\TransactionFactory;
 
 class TransactionController extends Controller
 {

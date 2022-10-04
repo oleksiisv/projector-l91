@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Database\Factories\TransactionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +10,7 @@ use Illuminate\Support\Facades\Redis;
 class Transaction extends Model
 {
     const LOG_DATA = 0;
+    const TTl = 30;
     use HasFactory;
 
     private $redis;
@@ -26,15 +26,22 @@ class Transaction extends Model
 
     /**
      * @param $key
+     * @param $fromCache
      *
-     * @return mixed
+     * @return mixed|null
      */
-    public function getTransaction($key)
+    public function getTransaction($key, $fromCache = true)
     {
-        $result = $this->getFromCache($key);
+        $result = null;
+        if ($fromCache) {
+            $result = $this->getFromCache($key);
+        }
         if ($result == null) {
+            $start = time();
             $record = DB::select('select * from transactions where psp_reference = ?', [$key]);
             $result = $record[0];
+            $delta = time() - $start;
+            $result->delta = $delta;
             $this->log('Loaded from database:' . $key);
             $this->saveToCache($result);
         }
@@ -49,7 +56,7 @@ class Transaction extends Model
      */
     private function saveToCache($transaction)
     {
-        $this->redis->set($transaction->psp_reference, json_encode($transaction), 'EX', 600);
+        $this->redis->set($transaction->psp_reference, json_encode($transaction), 'EX', self::TTl);
         $this->log('Saved to cache' . $transaction->psp_reference);
 
         return $transaction;
@@ -64,7 +71,11 @@ class Transaction extends Model
     {
         $result = json_decode($this->redis->get($key));
         if ($result !== null) {
-            $this->log('Loaded from cache:' . $key . '(ttl:' . $this->redis->ttl($key) . ')');
+            $ttl = $this->redis->ttl($key);
+            $this->probabilisticExarlyExpire($result, $ttl);
+            $this->log('Loaded from cache:' . $key . '(ttl:' . $ttl . ')');
+        } else {
+            $result = $this->getTransaction($key, false);
         }
 
         return $result;
@@ -110,6 +121,39 @@ class Transaction extends Model
             return;
         }
         echo $message . '<br>';
+    }
+
+    public function probabilisticExarlyExpire($result, $ttl)
+    {
+        $key = $result->psp_reference;
+        $ttlLeft = $ttl / self::TTl;
+        $cacheReset = false;
+        $chance = 0;
+        if (0.3 > $ttlLeft && $ttlLeft >= 0.2) {
+            $chance = 40; //40%
+            if (random_int(1, 100) <= $chance) {
+                $cacheReset = true;
+                $this->getTransaction($key, false);
+            }
+        }
+        if (0.2 > $ttlLeft && $ttlLeft >= 0.1) {
+            $chance = 70; //70%
+            if (random_int(1, 100) <= $chance) {
+                $cacheReset = true;
+                $this->getTransaction($key, false);
+            }
+        }
+        if (0.1 > $ttlLeft) {
+            $chance = 90; //90%
+            if (random_int(1, 100) <= $chance) {
+                $cacheReset = true;
+                $this->getTransaction($key, false);
+            }
+        }
+        file_put_contents('cache.log',
+            sprintf("key: %s, ttl: %s, chance: %s, cache reset: %s \n", $key, $ttl, $chance,
+                $cacheReset),
+            FILE_APPEND);
     }
 
     /**
